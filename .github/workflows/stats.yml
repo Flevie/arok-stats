@@ -1,0 +1,39 @@
+name: Update Roblox stats
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch stats
+        run: |
+          UNIVERSE_ID=9139383239
+          for HOST in games.roblox.com games.roproxy.com; do
+            RESP=$(curl -fsS -A "Mozilla/5.0" "https://$HOST/v1/games?universeIds=$UNIVERSE_ID" || true)
+            ID=$(echo "$RESP" | jq -r '.data[0].id // 0' 2>/dev/null || echo 0)
+            ID=${ID:-0}
+            if [ "$ID" != "0" ]; then
+              echo "Got real data from $HOST"
+              echo "$RESP" | jq '{playing: .data[0].playing, visits: .data[0].visits, favorites: .data[0].favoritedCount}' > stats.json
+              exit 0
+            fi
+            echo "$HOST returned restricted or empty data"
+          done
+          echo "No valid response from any host"
+          exit 1
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add stats.json
+          git diff --cached --quiet || (git commit -m "Update stats" && git push)
